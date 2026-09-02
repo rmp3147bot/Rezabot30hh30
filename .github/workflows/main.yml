@@ -9,6 +9,7 @@ jobs:
     timeout-minutes: 1440
 
     env:
+      # ✅ Secrets رو به Environment Variables منتقل کن
       XT_API_KEY: ${{ secrets.XT_API_KEY }}
       XT_API_SECRET: ${{ secrets.XT_API_SECRET }}
       XT_MARGIN_USDT: "4.0"
@@ -34,66 +35,110 @@ jobs:
           cp reza_execution_platform_v1.txt reza_execution_platform_v1.py
           mkdir -p runtime_reports reza_bot_v50_7_data reza_execution_platform_v1_data
 
+      # ================================================================
+      # ✅ چک کن که Secrets پر شدن
+      # ================================================================
+      - name: Verify Secrets
+        run: |
+          echo "✅ XT_API_KEY: ${#XT_API_KEY} characters"
+          echo "✅ XT_API_SECRET: ${#XT_API_SECRET} characters"
+          
+          if [ -z "$XT_API_KEY" ]; then
+            echo "❌ XT_API_KEY is empty!"
+            exit 1
+          fi
+          
+          if [ -z "$XT_API_SECRET" ]; then
+            echo "❌ XT_API_SECRET is empty!"
+            exit 1
+          fi
+          
+          echo "✅ All secrets are present"
+
+      # ================================================================
+      # ✅ کانفیگ پلتفرم با Secrets
+      # ================================================================
       - name: Create platform config
         run: |
           python -c "
           import json, os
           from pathlib import Path
+          
           Path('reza_execution_platform_v1_data').mkdir(exist_ok=True)
+          
+          # ✅ از Environment Variables بخون
+          api_key = os.environ.get('XT_API_KEY', '')
+          api_secret = os.environ.get('XT_API_SECRET', '')
+          
+          if not api_key or not api_secret:
+              print('❌ API credentials not found in environment!')
+              exit(1)
+          
+          config = {
+              'exchange': 'XT',
+              'market': 'USDT-M FUTURES',
+              'symbol': 'btc_usdt',
+              'api_key': api_key,
+              'api_secret': api_secret,
+              'margin_usdt': float(os.environ.get('XT_MARGIN_USDT', '4.0')),
+              'leverage': int(os.environ.get('XT_LEVERAGE', '8')),
+              'configured': True
+          }
+          
           with open('reza_execution_platform_v1_data/platform_config.json', 'w') as f:
-              json.dump({
-                  'exchange': 'XT',
-                  'market': 'USDT-M FUTURES',
-                  'symbol': 'btc_usdt',
-                  'api_key': os.environ['XT_API_KEY'],
-                  'api_secret': os.environ['XT_API_SECRET'],
-                  'margin_usdt': float(os.environ['XT_MARGIN_USDT']),
-                  'leverage': int(os.environ['XT_LEVERAGE']),
-                  'configured': True
-              }, f, indent=2)
+              json.dump(config, f, indent=2)
+          
+          print('✅ Platform config created')
+          print(f'   API KEY: {api_key[:8]}...')
+          print(f'   Margin: {config["margin_usdt"]} USDT')
+          print(f'   Leverage: {config["leverage"]}x')
           "
 
       # ================================================================
-      # ✅ مرحله 1: اول ربات (Webhook Server رو روشن میکنه)
+      # ✅ مرحله 1: ربات (Webhook Server)
       # ================================================================
-      - name: Start Bot First (Webhook Server)
+      - name: Start Bot
         run: |
-          echo "🚀 Starting Bot (Webhook Server on port 8765)..."
+          echo "🚀 Starting Bot (Webhook Server)..."
           nohup python -u reza_bot_v50_7.py > runtime_reports/bot.log 2>&1 &
           echo $! > runtime_reports/bot.pid
           
-          # صبر کن تا Webhook Server روشن بشه
           sleep 5
-          
-          # چک کن Webhook Server بالا اومده
           for i in $(seq 1 10); do
             if curl -fsS http://127.0.0.1:8765/health > /dev/null 2>&1; then
-              echo "✅ Webhook Server ready (attempt $i)"
+              echo "✅ Webhook Server ready"
               break
             fi
             sleep 1
           done
 
       # ================================================================
-      # ✅ مرحله 2: بعد پلتفرم (به Webhook وصل میشه)
+      # ✅ مرحله 2: پلتفرم
       # ================================================================
-      - name: Start Platform Second
+      - name: Start Platform
         run: |
           echo "🚀 Starting Platform..."
           nohup python -u reza_execution_platform_v1.py > runtime_reports/platform.log 2>&1 &
           echo $! > runtime_reports/platform.pid
           
-          for i in $(seq 1 30); do
+          for i in $(seq 1 60); do
             if curl -fsS http://127.0.0.1:8788/health > /dev/null 2>&1; then
               echo "✅ Platform ready (attempt $i)"
               break
-              sleep 1
             fi
+            if [ $((i % 5)) -eq 0 ]; then
+              echo "⏳ Waiting for platform... ($i/60)"
+            fi
+            sleep 1
           done
+          
+          echo ""
+          echo "===== PLATFORM LOG ====="
+          cat runtime_reports/platform.log
+          echo "========================"
           
           curl -fsS http://127.0.0.1:8788/health || {
             echo "❌ Platform failed to start"
-            cat runtime_reports/platform.log
             exit 1
           }
 
@@ -103,7 +148,7 @@ jobs:
       - name: Live Logs
         run: |
           echo "=============================================="
-          echo "🔥 REZA 24H LIVE (Webhook: ENABLED)"
+          echo "🔥 REZA 24H LIVE"
           echo "=============================================="
           echo "BOT      : http://127.0.0.1:8765 (Webhook)"
           echo "PLATFORM : http://127.0.0.1:8788"
