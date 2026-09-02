@@ -9,7 +9,6 @@ jobs:
     timeout-minutes: 1440
 
     env:
-      # ✅ Secrets رو به Environment Variables منتقل کن
       XT_API_KEY: ${{ secrets.XT_API_KEY }}
       XT_API_SECRET: ${{ secrets.XT_API_SECRET }}
       XT_MARGIN_USDT: "4.0"
@@ -36,27 +35,7 @@ jobs:
           mkdir -p runtime_reports reza_bot_v50_7_data reza_execution_platform_v1_data
 
       # ================================================================
-      # ✅ چک کن که Secrets پر شدن
-      # ================================================================
-      - name: Verify Secrets
-        run: |
-          echo "✅ XT_API_KEY: ${#XT_API_KEY} characters"
-          echo "✅ XT_API_SECRET: ${#XT_API_SECRET} characters"
-          
-          if [ -z "$XT_API_KEY" ]; then
-            echo "❌ XT_API_KEY is empty!"
-            exit 1
-          fi
-          
-          if [ -z "$XT_API_SECRET" ]; then
-            echo "❌ XT_API_SECRET is empty!"
-            exit 1
-          fi
-          
-          echo "✅ All secrets are present"
-
-      # ================================================================
-      # ✅ کانفیگ پلتفرم با Secrets
+      # ✅ کانفیگ پلتفرم (اصلاح شده)
       # ================================================================
       - name: Create platform config
         run: |
@@ -66,13 +45,15 @@ jobs:
           
           Path('reza_execution_platform_v1_data').mkdir(exist_ok=True)
           
-          # ✅ از Environment Variables بخون
           api_key = os.environ.get('XT_API_KEY', '')
           api_secret = os.environ.get('XT_API_SECRET', '')
           
           if not api_key or not api_secret:
-              print('❌ API credentials not found in environment!')
+              print('❌ API credentials not found!')
               exit(1)
+          
+          margin = float(os.environ.get('XT_MARGIN_USDT', '4.0'))
+          leverage = int(os.environ.get('XT_LEVERAGE', '8'))
           
           config = {
               'exchange': 'XT',
@@ -80,8 +61,8 @@ jobs:
               'symbol': 'btc_usdt',
               'api_key': api_key,
               'api_secret': api_secret,
-              'margin_usdt': float(os.environ.get('XT_MARGIN_USDT', '4.0')),
-              'leverage': int(os.environ.get('XT_LEVERAGE', '8')),
+              'margin_usdt': margin,
+              'leverage': leverage,
               'configured': True
           }
           
@@ -90,16 +71,16 @@ jobs:
           
           print('✅ Platform config created')
           print(f'   API KEY: {api_key[:8]}...')
-          print(f'   Margin: {config["margin_usdt"]} USDT')
-          print(f'   Leverage: {config["leverage"]}x')
+          print(f'   Margin: {margin} USDT')
+          print(f'   Leverage: {leverage}x')
           "
 
       # ================================================================
-      # ✅ مرحله 1: ربات (Webhook Server)
+      # ✅ مرحله 1: ربات
       # ================================================================
       - name: Start Bot
         run: |
-          echo "🚀 Starting Bot (Webhook Server)..."
+          echo "🚀 Starting Bot..."
           nohup python -u reza_bot_v50_7.py > runtime_reports/bot.log 2>&1 &
           echo $! > runtime_reports/bot.pid
           
@@ -149,9 +130,6 @@ jobs:
         run: |
           echo "=============================================="
           echo "🔥 REZA 24H LIVE"
-          echo "=============================================="
-          echo "BOT      : http://127.0.0.1:8765 (Webhook)"
-          echo "PLATFORM : http://127.0.0.1:8788"
           echo "=============================================="
           
           tail -n 0 -F runtime_reports/bot.log | while read line; do echo "[BOT] $line"; done &
