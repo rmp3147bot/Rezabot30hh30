@@ -188,7 +188,7 @@ DEFAULT_CONFIG = {
     "api_key": "",
     "api_secret": "",
     "margin_usdt": 4.0,
-    "leverage": 8,
+    "leverage": 20,
     "configured": False
 }
 
