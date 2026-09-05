@@ -102,7 +102,7 @@ SESSION_MINUTE = 30
 # SIGNAL FILTERS — XRP ✅ (بهینه شده)
 # ============================================================================
 
-MIN_R_VALUE = 0.0005
+MIN_R_VALUE = 0.0010
 MIN_BODY_PERCENT = 30.0
 
 
